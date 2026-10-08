@@ -1,0 +1,52 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: {{ .Values.project }}
+  namespace: {{ .Values.argocdNamespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-10"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: ShopStream workloads (least privilege — only these repos, namespaces and kinds)
+  sourceRepos:
+    - {{ .Values.repoURL | quote }}
+    - https://prometheus-community.github.io/helm-charts
+  destinations:
+    {{- range $name, $env := .Values.environments }}
+    {{- if $env.enabled }}
+    - server: https://kubernetes.default.svc
+      namespace: {{ $env.namespace }}
+    {{- end }}
+    {{- end }}
+    {{- if .Values.monitoring.enabled }}
+    - server: https://kubernetes.default.svc
+      namespace: {{ .Values.monitoring.namespace }}
+    - server: https://kubernetes.default.svc
+      namespace: kube-system
+    {{- end }}
+  # Namespaced kinds only, except what the monitoring stack and namespaces need.
+  clusterResourceWhitelist:
+    - { group: "", kind: Namespace }
+    {{- if .Values.monitoring.enabled }}
+    - { group: apiextensions.k8s.io, kind: CustomResourceDefinition }
+    - { group: rbac.authorization.k8s.io, kind: ClusterRole }
+    - { group: rbac.authorization.k8s.io, kind: ClusterRoleBinding }
+    - { group: admissionregistration.k8s.io, kind: MutatingWebhookConfiguration }
+    - { group: admissionregistration.k8s.io, kind: ValidatingWebhookConfiguration }
+    {{- end }}
+  namespaceResourceBlacklist:
+    - { group: "", kind: ResourceQuota }
+    - { group: "", kind: LimitRange }
+  orphanedResources:
+    warn: true
+  roles:
+    - name: read-only
+      description: Read-only access for the team
+      policies:
+        - p, proj:{{ .Values.project }}:read-only, applications, get, {{ .Values.project }}/*, allow
+    - name: deployer
+      description: May sync (e.g. promote prod) but not change the project
+      policies:
+        - p, proj:{{ .Values.project }}:deployer, applications, get, {{ .Values.project }}/*, allow
+        - p, proj:{{ .Values.project }}:deployer, applications, sync, {{ .Values.project }}/*, allow

@@ -1,0 +1,75 @@
+{{- if .Values.monitoring.prometheusRule.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ .Release.Name }}-alerts
+  labels:
+    app.kubernetes.io/part-of: shopstream
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    {{- with .Values.monitoring.prometheusRule.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  groups:
+    - name: shopstream.red
+      rules:
+        - record: shopstream:http_requests:rate5m
+          expr: sum by (namespace, service) (rate(http_server_request_duration_seconds_count[5m]))
+        - record: shopstream:http_errors:ratio5m
+          expr: |
+            sum by (namespace, service) (rate(http_server_request_duration_seconds_count{status_code=~"5.."}[5m]))
+              / clamp_min(sum by (namespace, service) (rate(http_server_request_duration_seconds_count[5m])), 1e-9)
+        - record: shopstream:http_latency_p95:5m
+          expr: histogram_quantile(0.95, sum by (namespace, service, le) (rate(http_server_request_duration_seconds_bucket[5m])))
+        - alert: ShopStreamHighErrorRate
+          expr: shopstream:http_errors:ratio5m > 0.05 and shopstream:http_requests:rate5m > 0.1
+          for: 5m
+          labels: { severity: critical }
+          annotations:
+            summary: "{{`{{ $labels.service }}`}} returns 5xx for {{`{{ $value | humanizePercentage }}`}} of requests"
+            description: More than 5% of HTTP/GraphQL requests failed over the last 5 minutes.
+        - alert: ShopStreamHighLatency
+          expr: shopstream:http_latency_p95:5m > 1
+          for: 10m
+          labels: { severity: warning }
+          annotations:
+            summary: "p95 latency of {{`{{ $labels.service }}`}} is {{`{{ $value | humanizeDuration }}`}}"
+    - name: shopstream.messaging
+      rules:
+        - alert: ShopStreamEventsDeadLettered
+          expr: sum by (namespace, consumer, type) (increase(shopstream_events_consumed_total{outcome="dead_lettered"}[15m])) > 0
+          labels: { severity: warning }
+          annotations:
+            summary: "{{`{{ $labels.consumer }}`}} dead-lettered {{`{{ $labels.type }}`}} events"
+            description: Inspect the SHOPSTREAM_DLQ stream (`nats stream view SHOPSTREAM_DLQ`) and replay after fixing the cause.
+        - alert: ShopStreamEventRetriesSpiking
+          expr: sum by (namespace, consumer) (rate(shopstream_events_consumed_total{outcome="retried"}[5m])) > 1
+          for: 10m
+          labels: { severity: warning }
+          annotations:
+            summary: "{{`{{ $labels.consumer }}`}} is retrying more than 1 event/s"
+        - alert: ShopStreamOutboxBacklog
+          expr: max by (namespace, service) (shopstream_outbox_pending) > 100
+          for: 5m
+          labels: { severity: critical }
+          annotations:
+            summary: "{{`{{ $labels.service }}`}} outbox has {{`{{ $value }}`}} unpublished events"
+            description: The outbox relay cannot reach NATS JetStream; events are safe in the database but the saga is stalled.
+    - name: shopstream.availability
+      rules:
+        - alert: ShopStreamPodNotReady
+          expr: |
+            sum by (namespace, pod) (kube_pod_status_ready{condition="false", namespace="{{ .Release.Namespace }}"}) > 0
+          for: 10m
+          labels: { severity: warning }
+          annotations:
+            summary: "{{`{{ $labels.pod }}`}} has not been ready for 10 minutes"
+        - alert: ShopStreamDeploymentReplicasMismatch
+          expr: |
+            kube_deployment_spec_replicas{namespace="{{ .Release.Namespace }}"}
+              != kube_deployment_status_replicas_available{namespace="{{ .Release.Namespace }}"}
+          for: 15m
+          labels: { severity: warning }
+          annotations:
+            summary: "{{`{{ $labels.deployment }}`}} is missing replicas"
+{{- end }}

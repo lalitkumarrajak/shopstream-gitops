@@ -1,0 +1,79 @@
+{{- range $name, $env := .Values.environments }}
+{{- if $env.enabled }}
+{{- range $kind := list "infra" "app" }}
+{{- $isInfra := eq $kind "infra" }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: shopstream-{{ $name }}{{ if $isInfra }}-infra{{ end }}
+  namespace: {{ $.Values.argocdNamespace }}
+  labels:
+    app.kubernetes.io/part-of: shopstream
+    shopstream.dev/environment: {{ $name }}
+  annotations:
+    # Databases, broker and secrets (wave -1) must be healthy before the app (wave 0) syncs.
+    # Manually-synced environments go last (wave 10) so they never block the root sync.
+    argocd.argoproj.io/sync-wave: {{ ternary (ternary "-1" "0" $isInfra) "10" (eq $env.autoSync true) | quote }}
+    {{- if $env.notify }}
+    notifications.argoproj.io/subscribe.on-sync-failed.slack: shopstream-alerts
+    notifications.argoproj.io/subscribe.on-health-degraded.slack: shopstream-alerts
+    notifications.argoproj.io/subscribe.on-sync-succeeded.slack: shopstream-deploys
+    {{- end }}
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: {{ $.Values.project }}
+  source:
+    repoURL: {{ $.Values.repoURL | quote }}
+    targetRevision: {{ $.Values.targetRevision | quote }}
+    path: charts/{{ if $isInfra }}shopstream-infra{{ else }}shopstream{{ end }}
+    helm:
+      releaseName: {{ if $isInfra }}shopstream-infra{{ else }}shopstream{{ end }}
+      valueFiles:
+        - ../../environments/{{ $name }}/{{ if $isInfra }}infra-values{{ else }}values{{ end }}.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: {{ $env.namespace }}
+  ignoreDifferences:
+    {{- if $isInfra }}
+    # The API server adds a `status` stub to StatefulSet volumeClaimTemplates.
+    - group: apps
+      kind: StatefulSet
+      jqPathExpressions: [".spec.volumeClaimTemplates[]?.status"]
+    {{- else }}
+    # HPA owns replica counts; don't fight it.
+    - group: apps
+      kind: Deployment
+      jsonPointers: [/spec/replicas]
+    {{- end }}
+  syncPolicy:
+    {{- if $env.autoSync }}
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    {{- end }}
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - PruneLast=true
+      - ApplyOutOfSyncOnly=true
+      - RespectIgnoreDifferences=true
+    managedNamespaceMetadata:
+      labels:
+        # Pod Security Admission: every workload must satisfy the "restricted" profile.
+        pod-security.kubernetes.io/enforce: restricted
+        pod-security.kubernetes.io/audit: restricted
+        pod-security.kubernetes.io/warn: restricted
+        shopstream.dev/environment: {{ $name }}
+    retry:
+      limit: 10
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 5m
+  revisionHistoryLimit: 10
+{{- end }}
+{{- end }}
+{{- end }}

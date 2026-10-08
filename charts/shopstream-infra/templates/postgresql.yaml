@@ -1,0 +1,115 @@
+{{- if .Values.postgresql.enabled }}
+{{- $p := .Values.postgresql -}}
+{{- $ctx := dict "root" $ "name" "postgresql" -}}
+{{- $fullname := printf "%s-postgresql" .Release.Name -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}
+  labels:
+    {{- include "infra.labels" $ctx | nindent 4 }}
+spec:
+  selector:
+    {{- include "infra.selector" $ctx | nindent 4 }}
+  ports:
+    - { name: postgresql, port: 5432, targetPort: postgresql }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}-headless
+  labels:
+    {{- include "infra.labels" $ctx | nindent 4 }}
+spec:
+  clusterIP: None
+  selector:
+    {{- include "infra.selector" $ctx | nindent 4 }}
+  ports:
+    - { name: postgresql, port: 5432, targetPort: postgresql }
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $fullname }}
+  labels:
+    {{- include "infra.labels" $ctx | nindent 4 }}
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $fullname }}
+  annotations:
+    # The official image's data directory is owned by its built-in user (uid 70).
+    kube-score/ignore: container-security-context-user-group-id
+  labels:
+    {{- include "infra.labels" $ctx | nindent 4 }}
+spec:
+  serviceName: {{ $fullname }}-headless
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "infra.selector" $ctx | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "infra.labels" $ctx | nindent 8 }}
+    spec:
+      serviceAccountName: {{ $fullname }}
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        {{- include "infra.podSecurityContext" (dict "uid" 70) | nindent 8 }}
+      containers:
+        - name: postgres
+          image: {{ $p.image }}
+          ports:
+            - { name: postgresql, containerPort: 5432 }
+          env:
+            - { name: POSTGRES_DB, value: {{ $p.database | quote }} }
+            - { name: POSTGRES_USER, value: {{ $p.username | quote }} }
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: {{ .Values.secret.name }}, key: POSTGRES_PASSWORD }
+            - { name: PGDATA, value: /var/lib/postgresql/data/pgdata }
+          startupProbe:
+            exec: { command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\" -h 127.0.0.1"] }
+            periodSeconds: 3
+            failureThreshold: 60
+          livenessProbe:
+            exec: { command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\" -h 127.0.0.1"] }
+            periodSeconds: 15
+            timeoutSeconds: 5
+          readinessProbe:
+            exec: { command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\" -h 127.0.0.1"] }
+            periodSeconds: 5
+            timeoutSeconds: 5
+          resources:
+            {{- toYaml $p.resources | nindent 12 }}
+          securityContext:
+            {{- include "infra.containerSecurityContext" . | nindent 12 }}
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/postgresql/data }
+            - { name: run, mountPath: /var/run/postgresql }
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: run
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+  volumeClaimTemplates:
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        volumeMode: Filesystem
+        {{- with .Values.storageClassName }}
+        storageClassName: {{ . }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ $p.storage }}
+{{- end }}

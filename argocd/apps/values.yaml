@@ -1,0 +1,26 @@
+# Rendered by the root Application (argocd/root-app.yaml). The kind bootstrap script
+# overrides repoURL/targetRevision to point Argo CD at a local git server.
+repoURL: https://github.com/rajak312/shopstream-gitops.git
+targetRevision: main
+argocdNamespace: argocd
+project: shopstream
+
+environments:
+  dev:
+    enabled: true
+    namespace: shopstream-dev
+    # automated sync with prune + self-heal: Git is the source of truth, drift is reverted
+    autoSync: true
+    notify: false
+  prod:
+    enabled: true
+    namespace: shopstream-prod
+    # manual sync: a human promotes after reviewing the diff in Argo CD
+    autoSync: false
+    notify: true
+
+monitoring:
+  enabled: true
+  namespace: monitoring
+  autoSync: false
+  chartVersion: 92.1.0

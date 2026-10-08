@@ -1,0 +1,55 @@
+# dev — automated sync (prune + self-heal). The shopstream release workflow bumps
+# global.image.tag to the commit SHA on every push to main.
+global:
+  image:
+    tag: latest
+
+commonEnv:
+  LOG_LEVEL: info
+  CORS_ORIGINS: "http://localhost:4780"
+
+ingress:
+  # kind: ingress-nginx is published on host port 4780 -> http://localhost:4780
+  host: localhost
+  tls:
+    enabled: false
+
+devResources: &devResources
+  requests: { cpu: 20m, memory: 128Mi }
+  limits: { cpu: 500m, memory: 320Mi }
+
+gateway:
+  replicas: 1
+  autoscaling: { enabled: false }
+  pdb: { enabled: false }
+  resources: *devResources
+  env:
+    SUPERGRAPH_POLL_MS: "15000"
+catalog:
+  replicas: 1
+  autoscaling: { enabled: false }
+  pdb: { enabled: false }
+  resources: *devResources
+orders:
+  replicas: 1
+  autoscaling: { enabled: false }
+  pdb: { enabled: false }
+  resources: *devResources
+  env:
+    DB_POOL_SIZE: "5"
+    FULFILLMENT_SHIP_AFTER_MS: "4000"
+    FULFILLMENT_DELIVER_AFTER_MS: "8000"
+payments:
+  replicas: 1
+  autoscaling: { enabled: false }
+  pdb: { enabled: false }
+  resources: *devResources
+notifications:
+  replicas: 1
+  autoscaling: { enabled: false }
+  pdb: { enabled: false }
+  resources: *devResources
+web:
+  replicas: 1
+  autoscaling: { enabled: false }
+  pdb: { enabled: false }

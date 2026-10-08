@@ -1,0 +1,42 @@
+# Example Argo CD Notifications configuration (Slack). Apply into the argocd namespace and
+# create the token secret separately (never commit it):
+#   kubectl -n argocd create secret generic argocd-notifications-secret --from-literal=slack-token=xoxb-...
+# Applications opt in with annotations, e.g. (see argocd/apps/templates/environments.yaml):
+#   notifications.argoproj.io/subscribe.on-sync-failed.slack: shopstream-alerts
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-notifications-cm
+  namespace: argocd
+data:
+  service.slack: |
+    token: $slack-token
+    username: argocd
+    icon: ":rocket:"
+  context: |
+    argocdUrl: https://argocd.example.com
+
+  template.app-sync-succeeded: |
+    message: |
+      :white_check_mark: *{{.app.metadata.name}}* synced to `{{.app.status.sync.revision | trunc 7}}`
+      <{{.context.argocdUrl}}/applications/{{.app.metadata.name}}|Open in Argo CD>
+  template.app-sync-failed: |
+    message: |
+      :x: Sync of *{{.app.metadata.name}}* failed at `{{.app.status.operationState.syncResult.revision | trunc 7}}`
+      {{.app.status.operationState.message}}
+      <{{.context.argocdUrl}}/applications/{{.app.metadata.name}}?operation=true|Details>
+  template.app-health-degraded: |
+    message: |
+      :warning: *{{.app.metadata.name}}* is {{.app.status.health.status}}
+      <{{.context.argocdUrl}}/applications/{{.app.metadata.name}}|Open in Argo CD>
+
+  trigger.on-sync-succeeded: |
+    - when: app.status.operationState.phase in ['Succeeded']
+      oncePer: app.status.sync.revision
+      send: [app-sync-succeeded]
+  trigger.on-sync-failed: |
+    - when: app.status.operationState.phase in ['Error', 'Failed']
+      send: [app-sync-failed]
+  trigger.on-health-degraded: |
+    - when: app.status.health.status == 'Degraded'
+      send: [app-health-degraded]

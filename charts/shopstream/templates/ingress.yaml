@@ -1,0 +1,51 @@
+{{- if .Values.ingress.enabled }}
+{{- $tls := .Values.ingress.tls -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    app.kubernetes.io/part-of: shopstream
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  annotations:
+    {{- with .Values.ingress.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    {{- if $tls.enabled }}
+    cert-manager.io/cluster-issuer: {{ $tls.clusterIssuer | quote }}
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    {{- end }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- if $tls.enabled }}
+  tls:
+    - hosts: [{{ .Values.ingress.host | quote }}]
+      secretName: {{ $tls.secretName }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.host | quote }}
+      http:
+        paths:
+          {{- if .Values.gateway.enabled }}
+          - path: /graphql
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Release.Name }}-gateway
+                port: { name: http }
+          - path: /events
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Release.Name }}-gateway
+                port: { name: http }
+          {{- end }}
+          {{- if .Values.web.enabled }}
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Release.Name }}-web
+                port: { name: http }
+          {{- end }}
+{{- end }}

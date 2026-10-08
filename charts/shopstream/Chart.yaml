@@ -1,0 +1,19 @@
+apiVersion: v2
+name: shopstream
+description: ShopStream application — Apollo Federation gateway, catalog, orders, payments and notifications subgraphs, and the Next.js storefront.
+type: application
+version: 1.0.0
+appVersion: "latest"
+kubeVersion: ">=1.29.0-0"
+home: https://github.com/rajak312/shopstream
+sources:
+  - https://github.com/rajak312/shopstream
+  - https://github.com/rajak312/shopstream-gitops
+keywords: [graphql, federation, nestjs, nats, microservices, saga]
+maintainers:
+  - name: Lalit Rajak
+    url: https://github.com/rajak312
+dependencies:
+  - name: shopstream-lib
+    version: 1.0.0
+    repository: file://../shopstream-lib

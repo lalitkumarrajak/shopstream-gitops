@@ -1,0 +1,146 @@
+{{- if .Values.mongodb.enabled }}
+{{- $m := .Values.mongodb -}}
+{{- $ctx := dict "root" $ "name" "mongodb" -}}
+{{- $fullname := printf "%s-mongodb" .Release.Name -}}
+{{- $member := printf "%s-0.%s-headless.%s.svc.cluster.local:27017" $fullname $fullname .Release.Namespace -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}-headless
+  labels:
+    {{- include "infra.labels" $ctx | nindent 4 }}
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true  # members must resolve each other before they are "ready"
+  selector:
+    {{- include "infra.selector" $ctx | nindent 4 }}
+  ports:
+    - { name: mongodb, port: 27017, targetPort: mongodb }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}
+  labels:
+    {{- include "infra.labels" $ctx | nindent 4 }}
+spec:
+  selector:
+    {{- include "infra.selector" $ctx | nindent 4 }}
+  ports:
+    - { name: mongodb, port: 27017, targetPort: mongodb }
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $fullname }}
+  labels:
+    {{- include "infra.labels" $ctx | nindent 4 }}
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $fullname }}
+  annotations:
+    # The official image's data directory is owned by its built-in user (uid 999).
+    kube-score/ignore: container-security-context-user-group-id
+  labels:
+    {{- include "infra.labels" $ctx | nindent 4 }}
+spec:
+  serviceName: {{ $fullname }}-headless
+  replicas: 1
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      {{- include "infra.selector" $ctx | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "infra.labels" $ctx | nindent 8 }}
+    spec:
+      serviceAccountName: {{ $fullname }}
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        {{- include "infra.podSecurityContext" (dict "uid" 999) | nindent 8 }}
+      initContainers:
+        # Native sidecar (k8s >= 1.29): initiates the single-member replica set once mongod
+        # answers, idempotently, so transactions work. Readiness below waits for PRIMARY.
+        - name: replica-set-init
+          image: {{ $m.image }}
+          restartPolicy: Always
+          command:
+            - bash
+            - -c
+            - |
+              until mongosh --quiet --eval 'db.adminCommand({ ping: 1 }).ok' >/dev/null 2>&1; do sleep 2; done
+              mongosh --quiet --eval '
+                try { rs.status(); print("replica set already initiated"); }
+                catch (e) { printjson(rs.initiate({ _id: "{{ $m.replicaSetName }}", members: [{ _id: 0, host: "{{ $member }}" }] })); }'
+              exec sleep infinity
+          env:
+            - { name: HOME, value: /tmp }
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+            limits: { cpu: 200m, memory: 256Mi }
+          securityContext:
+            {{- include "infra.containerSecurityContext" . | nindent 12 }}
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      containers:
+        - name: mongod
+          image: {{ $m.image }}
+          command:
+            - mongod
+            - --replSet={{ $m.replicaSetName }}
+            - --bind_ip_all
+            - --dbpath=/data/db
+            - --wiredTigerCacheSizeGB={{ $m.wiredTigerCacheSizeGB }}
+            - --quiet
+          ports:
+            - { name: mongodb, containerPort: 27017 }
+          env:
+            - { name: HOME, value: /tmp }
+          startupProbe:
+            tcpSocket: { port: mongodb }
+            periodSeconds: 3
+            failureThreshold: 60
+          livenessProbe:
+            tcpSocket: { port: mongodb }
+            periodSeconds: 15
+            timeoutSeconds: 5
+          readinessProbe:
+            exec:
+              command: ["mongosh", "--quiet", "--eval", "quit(db.hello().isWritablePrimary ? 0 : 1)"]
+            periodSeconds: 10
+            timeoutSeconds: 10
+            failureThreshold: 6
+          resources:
+            {{- toYaml $m.resources | nindent 12 }}
+          securityContext:
+            {{- include "infra.containerSecurityContext" . | nindent 12 }}
+          volumeMounts:
+            - { name: data, mountPath: /data/db }
+            - { name: configdb, mountPath: /data/configdb }
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: configdb
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+  volumeClaimTemplates:
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        volumeMode: Filesystem
+        {{- with .Values.storageClassName }}
+        storageClassName: {{ . }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ $m.storage }}
+{{- end }}

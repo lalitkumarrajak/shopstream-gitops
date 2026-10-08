@@ -1,0 +1,24 @@
+# prod — databases are managed services; only NATS JetStream runs in-cluster.
+# For a clustered (R3) JetStream use the official nats-io/nats Helm chart instead.
+mongodb:
+  enabled: false
+postgresql:
+  enabled: false
+nats:
+  storage: 10Gi
+  maxFileStore: 8G
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: "1", memory: 512Mi }
+storageClassName: hcloud-volumes
+
+# Secrets come from the External Secrets Operator (backed by Vault / a cloud secret manager).
+# The remote entry must contain JWT_SECRET, DATABASE_URL, DIRECT_URL and MONGODB_URI.
+secret:
+  create: false
+externalSecret:
+  enabled: true
+  secretStoreRef:
+    kind: ClusterSecretStore
+    name: vault-backend
+  remoteKey: shopstream/prod

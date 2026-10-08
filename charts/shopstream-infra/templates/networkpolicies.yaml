@@ -1,0 +1,19 @@
+{{- if .Values.networkPolicy.enabled }}
+{{- $clients := dict "podSelector" (dict "matchLabels" (dict "app.kubernetes.io/part-of" "shopstream")) -}}
+{{- $monitoring := dict "namespaceSelector" (dict "matchLabels" (dict "kubernetes.io/metadata.name" .Values.networkPolicy.monitoringNamespace)) -}}
+{{- if .Values.mongodb.enabled }}
+{{ include "shopstream-lib.networkPolicy" (dict "root" $ "name" "mongodb" "c" (dict "component" "database" "image" (dict "tag" "7.0"))
+  "from" (list (merge (dict "ports" (list (dict "port" 27017 "protocol" "TCP"))) $clients))
+  "egressTo" (list (dict "podSelector" (dict "matchLabels" (dict "app.kubernetes.io/name" "mongodb" "app.kubernetes.io/instance" .Release.Name)) "ports" (list (dict "port" 27017 "protocol" "TCP"))))) }}
+{{- end }}
+{{- if .Values.postgresql.enabled }}
+{{ include "shopstream-lib.networkPolicy" (dict "root" $ "name" "postgresql" "c" (dict "component" "database" "image" (dict "tag" "17"))
+  "from" (list (merge (dict "ports" (list (dict "port" 5432 "protocol" "TCP"))) $clients))
+  "egressTo" (list)) }}
+{{- end }}
+{{- if .Values.nats.enabled }}
+{{ include "shopstream-lib.networkPolicy" (dict "root" $ "name" "nats" "c" (dict "component" "message-broker" "image" (dict "tag" "2.12"))
+  "from" (list (merge (dict "ports" (list (dict "port" 4222 "protocol" "TCP"))) $clients) (merge (dict "ports" (list (dict "port" 8222 "protocol" "TCP"))) $monitoring))
+  "egressTo" (list)) }}
+{{- end }}
+{{- end }}

@@ -1,0 +1,11 @@
+.rendered/
+charts/*/charts/
+*.tgz
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+.terraform.lock.hcl.bak
+.DS_Store
+rendered-checkov/

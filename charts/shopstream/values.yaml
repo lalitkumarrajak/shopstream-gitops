@@ -1,0 +1,243 @@
+# Default values for the ShopStream application chart. Environment overlays live in
+# environments/<env>/values.yaml and only override what differs.
+
+global:
+  image:
+    registry: ghcr.io/rajak312
+    # Immutable git SHA in real environments (bumped by the shopstream release workflow).
+    tag: latest
+    pullPolicy: IfNotPresent
+  imagePullSecrets: []
+
+# The Secret with JWT_SECRET, DATABASE_URL, DIRECT_URL (optional) and MONGODB_URI.
+# It is NOT created by this chart: in dev the shopstream-infra chart creates it next to
+# the databases; in prod it is materialised by External Secrets / Sealed Secrets.
+secretName: shopstream-secrets
+
+# Env shared by every backend service (rendered through `tpl`).
+commonEnv:
+  NODE_ENV: production
+  LOG_LEVEL: info
+  NATS_URL: "nats://shopstream-infra-nats:4222"
+  NATS_STREAM_REPLICAS: "1"
+  CORS_ORIGINS: "https://{{ .Values.ingress.host }}"
+  OTEL_EXPORTER_OTLP_ENDPOINT: ""
+  SHUTDOWN_GRACE_MS: "20000"
+
+# Resource defaults applied to backend services unless overridden.
+defaultResources: &defaultResources
+  requests:
+    cpu: 50m
+    memory: 160Mi
+  limits:
+    cpu: 500m
+    memory: 384Mi
+
+gateway:
+  enabled: true
+  component: graphql-gateway
+  image:
+    repository: shopstream-gateway
+  port: 4000
+  replicas: 2
+  secretEnv: [JWT_SECRET, MONGODB_URI]
+  env:
+    CATALOG_URL: "http://{{ .Release.Name }}-catalog:4001/graphql"
+    ORDERS_URL: "http://{{ .Release.Name }}-orders:4002/graphql"
+    PAYMENTS_URL: "http://{{ .Release.Name }}-payments:4003/graphql"
+    NOTIFICATIONS_URL: "http://{{ .Release.Name }}-notifications:4004/graphql"
+    SUPERGRAPH_POLL_MS: "30000"
+  resources: *defaultResources
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+  pdb:
+    enabled: true
+    minAvailable: 1
+  metrics:
+    enabled: true
+
+catalog:
+  enabled: true
+  component: subgraph
+  image:
+    repository: shopstream-catalog
+  port: 4001
+  replicas: 2
+  secretEnv: [JWT_SECRET, MONGODB_URI]
+  env:
+    SEED_ON_START: "true"
+  resources: *defaultResources
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 4
+  pdb:
+    enabled: true
+    minAvailable: 1
+  metrics:
+    enabled: true
+
+orders:
+  enabled: true
+  component: subgraph
+  image:
+    repository: shopstream-orders
+  port: 4002
+  replicas: 2
+  secretEnv: [JWT_SECRET, DATABASE_URL]
+  env:
+    DB_POOL_SIZE: "10"
+  resources: *defaultResources
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 4
+  pdb:
+    enabled: true
+    minAvailable: 1
+  metrics:
+    enabled: true
+
+payments:
+  enabled: true
+  component: subgraph
+  image:
+    repository: shopstream-payments
+  port: 4003
+  replicas: 2
+  secretEnv: [JWT_SECRET, MONGODB_URI]
+  env:
+    PAYMENT_LATENCY_MS: "700"
+  resources: *defaultResources
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 4
+  pdb:
+    enabled: true
+    minAvailable: 1
+  metrics:
+    enabled: true
+
+notifications:
+  enabled: true
+  component: subgraph
+  image:
+    repository: shopstream-notifications
+  port: 4004
+  replicas: 2
+  secretEnv: [JWT_SECRET, MONGODB_URI]
+  env: {}
+  resources: *defaultResources
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 4
+  pdb:
+    enabled: true
+    minAvailable: 1
+  metrics:
+    enabled: true
+
+web:
+  enabled: true
+  component: frontend
+  image:
+    repository: shopstream-web
+  port: 3000
+  replicas: 2
+  probes:
+    liveness: /
+    readiness: /
+  env:
+    HOSTNAME: "0.0.0.0"
+  resources:
+    requests:
+      cpu: 25m
+      memory: 96Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 4
+  pdb:
+    enabled: true
+    minAvailable: 1
+  metrics:
+    enabled: false
+  # Next.js writes its cache next to the build output; keep the root FS read-only.
+  extraVolumes:
+    - name: next-cache
+      emptyDir:
+        sizeLimit: 128Mi
+  extraVolumeMounts:
+    - name: next-cache
+      mountPath: /app/apps/web/.next/cache
+
+# Pre-sync database migration (prisma migrate deploy) — Argo CD PreSync hook / Helm pre-upgrade hook.
+migrations:
+  enabled: true
+  # host:port to wait for before migrating (empty = don't wait, e.g. managed Postgres)
+  waitFor: "shopstream-infra-postgresql:5432"
+  backoffLimit: 4
+  activeDeadlineSeconds: 600
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 384Mi
+
+ingress:
+  enabled: true
+  className: nginx
+  host: shopstream.example.com
+  tls:
+    enabled: true
+    secretName: shopstream-tls
+    # cert-manager ClusterIssuer that issues the certificate (e.g. letsencrypt-prod)
+    clusterIssuer: letsencrypt-prod
+  annotations:
+    # Server-Sent Events: no buffering, long-lived connections
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-body-size: "1m"
+    nginx.ingress.kubernetes.io/limit-rps: "50"
+
+networkPolicy:
+  enabled: true
+  # Namespaces allowed to reach the public workloads / scrape metrics
+  ingressControllerNamespace: ingress-nginx
+  monitoringNamespace: monitoring
+  # Allow egress to databases outside the cluster (Atlas, Neon, RDS...) on these ports.
+  externalDatabases:
+    enabled: false
+    cidr: 0.0.0.0/0
+    except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16]
+    ports: [5432, 27017]
+  # Allow egress to an OTLP collector (namespace selector).
+  otelCollectorNamespace: ""
+
+# Requires the Prometheus Operator CRDs (kube-prometheus-stack).
+monitoring:
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    labels:
+      release: kube-prometheus-stack
+  prometheusRule:
+    enabled: false
+    labels:
+      release: kube-prometheus-stack
+  grafanaDashboard:
+    enabled: false
+    # kube-prometheus-stack's Grafana sidecar picks up ConfigMaps with this label
+    label: grafana_dashboard
+    namespace: ""

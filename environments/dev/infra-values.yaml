@@ -1,0 +1,14 @@
+# dev — in-cluster MongoDB / PostgreSQL / NATS with throwaway data.
+mongodb:
+  storage: 1Gi
+postgresql:
+  storage: 1Gi
+nats:
+  storage: 1Gi
+
+secret:
+  # DEV ONLY: plain values for a disposable local cluster. Never do this in prod
+  # (prod uses the External Secrets Operator, see environments/prod/infra-values.yaml).
+  create: true
+  jwtSecret: dev-only-jwt-secret-not-for-production
+  postgresPassword: dev-only-postgres-password

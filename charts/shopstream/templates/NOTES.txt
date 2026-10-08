@@ -1,0 +1,7 @@
+ShopStream {{ .Chart.AppVersion }} deployed as "{{ .Release.Name }}" in namespace {{ .Release.Namespace }}.
+
+Storefront: http{{ if .Values.ingress.tls.enabled }}s{{ end }}://{{ .Values.ingress.host }}/
+GraphQL:    http{{ if .Values.ingress.tls.enabled }}s{{ end }}://{{ .Values.ingress.host }}/graphql
+
+Watch the rollout:
+  kubectl -n {{ .Release.Namespace }} get pods -l app.kubernetes.io/part-of=shopstream -w

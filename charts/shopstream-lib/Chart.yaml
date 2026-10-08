@@ -1,0 +1,8 @@
+apiVersion: v2
+name: shopstream-lib
+description: Shared Helm library for ShopStream workloads (names, labels, hardened Deployments, Services, HPA, PDB, NetworkPolicy, ServiceMonitor).
+type: library
+version: 1.0.0
+maintainers:
+  - name: Lalit Rajak
+    url: https://github.com/rajak312

@@ -1,0 +1,14 @@
+apiVersion: v2
+name: shopstream-infra
+description: Stateful dependencies for ShopStream (MongoDB replica set, PostgreSQL, NATS JetStream) plus the application Secret. Minimal hardened StatefulSets that run offline in kind; swap for managed services or operators in production.
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+kubeVersion: ">=1.29.0-0"
+maintainers:
+  - name: Lalit Rajak
+    url: https://github.com/rajak312
+dependencies:
+  - name: shopstream-lib
+    version: 1.0.0
+    repository: file://../shopstream-lib

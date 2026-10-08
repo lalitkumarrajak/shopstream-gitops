@@ -1,0 +1,6 @@
+dependencies:
+- name: shopstream-lib
+  repository: file://../shopstream-lib
+  version: 1.0.0
+digest: sha256:7042060d8688f777a345bae550af994a277a5b6b287dd5c357ff755bf774e1be
+generated: "2026-10-08T12:56:34.117722838+05:30"

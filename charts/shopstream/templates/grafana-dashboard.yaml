@@ -1,0 +1,14 @@
+{{- if .Values.monitoring.grafanaDashboard.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-grafana-dashboard
+  namespace: {{ .Values.monitoring.grafanaDashboard.namespace | default .Release.Namespace }}
+  labels:
+    {{ .Values.monitoring.grafanaDashboard.label }}: "1"
+    app.kubernetes.io/part-of: shopstream
+    app.kubernetes.io/instance: {{ .Release.Name }}
+data:
+  shopstream-red.json: |-
+{{ .Files.Get "dashboards/shopstream-red.json" | indent 4 }}
+{{- end }}

@@ -1,0 +1,68 @@
+# Stateful dependencies. Each can be disabled and replaced by a managed service
+# (MongoDB Atlas, Neon/RDS/Cloud SQL, Synadia Cloud) — then point the Secret at it.
+
+storageClassName: ""  # "" = cluster default (kind: standard / local-path)
+
+mongodb:
+  enabled: true
+  image: mongo:7.0
+  replicaSetName: rs0
+  storage: 2Gi
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: "1", memory: 768Mi }
+  # WiredTiger cache sized for the container limit
+  wiredTigerCacheSizeGB: 0.25
+
+postgresql:
+  enabled: true
+  image: postgres:17-alpine
+  database: shopstream_orders
+  username: shopstream
+  storage: 2Gi
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { cpu: "1", memory: 512Mi }
+
+nats:
+  enabled: true
+  image: nats:2.12-alpine
+  storage: 2Gi
+  maxFileStore: 1G
+  maxMemoryStore: 64M
+  resources:
+    requests: { cpu: 25m, memory: 64Mi }
+    limits: { cpu: 500m, memory: 256Mi }
+
+# ----------------------------------------------------------------------------
+# Application Secret (JWT_SECRET, DATABASE_URL, DIRECT_URL, MONGODB_URI).
+# Exactly one of the three modes should be used per environment:
+secret:
+  name: shopstream-secrets
+  # 1) Plain Secret rendered from values — ONLY for local/dev clusters with throwaway data.
+  create: false
+  jwtSecret: ""
+  postgresPassword: ""
+  # Override the computed in-cluster URLs (e.g. to point at Neon / Atlas)
+  databaseUrl: ""
+  directUrl: ""
+  mongodbUri: ""
+
+# 2) External Secrets Operator: pull from Vault / AWS Secrets Manager / GCP SM / 1Password...
+externalSecret:
+  enabled: false
+  refreshInterval: 1h
+  secretStoreRef:
+    kind: ClusterSecretStore
+    name: vault-backend
+  # remote key holding JWT_SECRET, DATABASE_URL, DIRECT_URL, MONGODB_URI, POSTGRES_PASSWORD
+  remoteKey: shopstream/prod
+
+# 3) Sealed Secrets: commit only the encrypted blob produced by `kubeseal`.
+sealedSecret:
+  enabled: false
+  encryptedData: {}
+
+networkPolicy:
+  enabled: true
+  monitoringNamespace: monitoring

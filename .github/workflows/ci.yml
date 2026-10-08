@@ -1,0 +1,108 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  HELM_VERSION: v4.3.0
+  KUBECONFORM_VERSION: v0.8.0
+  KUBE_SCORE_VERSION: 1.20.0
+
+jobs:
+  manifests:
+    name: Helm lint · template · kubeconform · kube-score
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: ${{ env.HELM_VERSION }}
+      - name: Install kubeconform and kube-score
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/bin" && echo "$HOME/bin" >> "$GITHUB_PATH"
+          curl -sSL "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" | tar xz -C "$HOME/bin" kubeconform
+          curl -sSL "https://github.com/zegl/kube-score/releases/download/v${KUBE_SCORE_VERSION}/kube-score_${KUBE_SCORE_VERSION}_linux_amd64.tar.gz" | tar xz -C "$HOME/bin" kube-score
+      - name: Validate (same script as local)
+        run: scripts/validate.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rendered-manifests
+          path: .rendered/
+
+  checkov:
+    name: Checkov policy scan (rendered prod manifests + Terraform)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: ${{ env.HELM_VERSION }}
+      - run: scripts/checkov.sh
+
+  terraform:
+    name: Terraform fmt · validate (Hetzner k3s)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: infra/terraform/hetzner
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.16.5
+      - run: terraform fmt -check -recursive
+      - run: terraform init -backend=false -input=false
+      - run: terraform validate
+
+  kind-e2e:
+    name: End-to-end on kind (Argo CD app-of-apps → smoke test through ingress)
+    runs-on: ubuntu-latest
+    needs: [manifests]
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      # Images are built from the application repo so this works before anything is published to GHCR.
+      - uses: actions/checkout@v4
+        with:
+          repository: rajak312/shopstream
+          path: .shopstream-src
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: azure/setup-helm@v4
+        with:
+          version: ${{ env.HELM_VERSION }}
+      - uses: helm/kind-action@v1
+        with:
+          install_only: true
+      - name: Bootstrap (kind + ingress-nginx + Argo CD + root app) and smoke test
+        env:
+          GITOPS_SOURCE: local          # Argo CD syncs this exact commit from an in-network git server
+          IMAGE_SOURCE: build
+          SHOPSTREAM_SRC: ${{ github.workspace }}/.shopstream-src
+        run: |
+          git config user.name ci && git config user.email ci@example.com
+          scripts/bootstrap-kind.sh
+      - name: Diagnostics
+        if: failure()
+        run: |
+          kubectl get applications -n argocd -o wide || true
+          kubectl get pods -A -o wide || true
+          kubectl -n shopstream-dev get events --sort-by=.lastTimestamp | tail -50 || true
+          for d in gateway catalog orders payments notifications; do kubectl -n shopstream-dev logs deploy/shopstream-$d --tail=50 || true; done
+          kubectl -n argocd get application shopstream-dev -o yaml | tail -60 || true

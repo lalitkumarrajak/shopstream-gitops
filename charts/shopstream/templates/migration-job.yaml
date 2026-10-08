@@ -1,0 +1,85 @@
+{{- if and .Values.migrations.enabled .Values.orders.enabled }}
+{{- $ctx := dict "root" $ "name" "migrations" "c" (merge (dict "component" "migration") .Values.orders) }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  # Fixed name + BeforeHookCreation: the previous run is replaced on every sync.
+  name: {{ .Release.Name }}-migrations
+  labels:
+    {{- include "shopstream-lib.labels" $ctx | nindent 4 }}
+  annotations:
+    # Argo CD: run before any other resource is applied, every sync.
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    # Plain `helm install/upgrade` equivalent.
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-5"
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  backoffLimit: {{ .Values.migrations.backoffLimit }}
+  activeDeadlineSeconds: {{ .Values.migrations.activeDeadlineSeconds }}
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        {{- include "shopstream-lib.selectorLabels" $ctx | nindent 8 }}
+        app.kubernetes.io/part-of: shopstream
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        {{- include "shopstream-lib.podSecurityContext" $ctx | nindent 8 }}
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.migrations.waitFor }}
+      initContainers:
+        - name: wait-for-postgres
+          image: {{ include "shopstream-lib.image" $ctx | quote }}
+          imagePullPolicy: {{ include "shopstream-lib.pullPolicy" $ctx }}
+          command:
+            - node
+            - -e
+            - |
+              const [host, port] = process.argv[1].split(':');
+              const net = require('node:net');
+              const deadline = Date.now() + 300000;
+              (function attempt() {
+                const s = net.connect(Number(port), host, () => { console.log(`${host}:${port} is reachable`); s.end(); process.exit(0); });
+                s.on('error', () => { if (Date.now() > deadline) process.exit(1); setTimeout(attempt, 2000); });
+              })();
+            - {{ .Values.migrations.waitFor | quote }}
+          resources:
+            {{- toYaml .Values.migrations.resources | nindent 12 }}
+          securityContext:
+            {{- include "shopstream-lib.containerSecurityContext" $ctx | nindent 12 }}
+      {{- end }}
+      containers:
+        - name: prisma-migrate-deploy
+          image: {{ include "shopstream-lib.image" $ctx | quote }}
+          imagePullPolicy: {{ include "shopstream-lib.pullPolicy" $ctx }}
+          workingDir: /app/services/orders
+          command: ["node", "../../node_modules/prisma/build/index.js", "migrate", "deploy"]
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef: { name: {{ .Values.secretName }}, key: DATABASE_URL }
+            - name: DIRECT_URL
+              valueFrom:
+                secretKeyRef: { name: {{ .Values.secretName }}, key: DIRECT_URL, optional: true }
+            - name: HOME
+              value: /tmp
+          resources:
+            {{- toYaml .Values.migrations.resources | nindent 12 }}
+          securityContext:
+            {{- include "shopstream-lib.containerSecurityContext" $ctx | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+{{- end }}

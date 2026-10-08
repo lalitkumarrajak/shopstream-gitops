@@ -1,0 +1,7 @@
+{{- range $name := splitList " " (include "shopstream.components" $) }}
+{{- $component := index $.Values $name }}
+{{- if $component.enabled }}
+{{- $ctx := fromYaml (include "shopstream.ctx" (list $ $name)) }}
+{{ include "shopstream-lib.workload" (dict "root" $ "name" $name "c" $ctx.c) }}
+{{- end }}
+{{- end }}

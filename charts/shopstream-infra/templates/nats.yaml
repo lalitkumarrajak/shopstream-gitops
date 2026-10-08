@@ -1,0 +1,138 @@
+{{- define "infra.natsConfig" -}}
+port: 4222
+http_port: 8222
+server_name: $POD_NAME
+max_payload: 1MB
+pid_file: /tmp/nats.pid
+lame_duck_duration: 30s
+jetstream {
+  store_dir: /data
+  max_memory_store: {{ .Values.nats.maxMemoryStore }}
+  max_file_store: {{ .Values.nats.maxFileStore }}
+}
+{{- end -}}
+
+{{- if .Values.nats.enabled }}
+{{- $n := .Values.nats -}}
+{{- $ctx := dict "root" $ "name" "nats" "component" "message-broker" -}}
+{{- $fullname := printf "%s-nats" .Release.Name -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $fullname }}
+  labels:
+    {{- include "infra.labels" $ctx | nindent 4 }}
+data:
+  nats.conf: |
+    {{- include "infra.natsConfig" . | nindent 4 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}
+  labels:
+    {{- include "infra.labels" $ctx | nindent 4 }}
+spec:
+  selector:
+    {{- include "infra.selector" $ctx | nindent 4 }}
+  ports:
+    - { name: client, port: 4222, targetPort: client }
+    - { name: monitor, port: 8222, targetPort: monitor }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}-headless
+  labels:
+    {{- include "infra.labels" $ctx | nindent 4 }}
+spec:
+  clusterIP: None
+  selector:
+    {{- include "infra.selector" $ctx | nindent 4 }}
+  ports:
+    - { name: client, port: 4222, targetPort: client }
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $fullname }}
+  labels:
+    {{- include "infra.labels" $ctx | nindent 4 }}
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $fullname }}
+  labels:
+    {{- include "infra.labels" $ctx | nindent 4 }}
+spec:
+  serviceName: {{ $fullname }}-headless
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "infra.selector" $ctx | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "infra.labels" $ctx | nindent 8 }}
+      annotations:
+        checksum/config: {{ include "infra.natsConfig" . | sha256sum | trunc 16 }}
+    spec:
+      serviceAccountName: {{ $fullname }}
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        {{- include "infra.podSecurityContext" (dict "uid" 10001) | nindent 8 }}
+      containers:
+        - name: nats
+          image: {{ $n.image }}
+          args: ["-c", "/etc/nats/nats.conf"]
+          env:
+            - name: POD_NAME
+              valueFrom: { fieldRef: { fieldPath: metadata.name } }
+          ports:
+            - { name: client, containerPort: 4222 }
+            - { name: monitor, containerPort: 8222 }
+          startupProbe:
+            httpGet: { path: /healthz, port: monitor }
+            periodSeconds: 2
+            failureThreshold: 60
+          livenessProbe:
+            httpGet: { path: "/healthz?js-enabled-only=true", port: monitor }
+            periodSeconds: 15
+          readinessProbe:
+            httpGet: { path: "/healthz?js-enabled-only=true", port: monitor }
+            periodSeconds: 5
+          lifecycle:
+            preStop:
+              exec: { command: ["nats-server", "--signal", "ldm=/tmp/nats.pid"] }
+          resources:
+            {{- toYaml $n.resources | nindent 12 }}
+          securityContext:
+            {{- include "infra.containerSecurityContext" . | nindent 12 }}
+          volumeMounts:
+            - { name: data, mountPath: /data }
+            - { name: config, mountPath: /etc/nats }
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: config
+          configMap: { name: {{ $fullname }} }
+        - name: tmp
+          emptyDir: {}
+  volumeClaimTemplates:
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        volumeMode: Filesystem
+        {{- with .Values.storageClassName }}
+        storageClassName: {{ . }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ $n.storage }}
+{{- end }}

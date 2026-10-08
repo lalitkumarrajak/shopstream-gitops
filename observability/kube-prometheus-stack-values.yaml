@@ -1,0 +1,61 @@
+# Values for prometheus-community/kube-prometheus-stack (deployed by the `monitoring`
+# Argo CD Application). Picks up every ServiceMonitor / PrometheusRule / dashboard
+# ConfigMap in the cluster, not only those labelled for this Helm release.
+fullnameOverride: kps
+
+prometheus:
+  prometheusSpec:
+    retention: 7d
+    retentionSize: 8GB
+    scrapeInterval: 30s
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    resources:
+      requests: { cpu: 100m, memory: 512Mi }
+      limits: { memory: 2Gi }
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 10Gi
+
+alertmanager:
+  alertmanagerSpec:
+    resources:
+      requests: { cpu: 10m, memory: 64Mi }
+  config:
+    route:
+      receiver: "null"
+      group_by: [alertname, namespace, service]
+      routes:
+        - receiver: slack
+          matchers: ['severity =~ "critical|warning"', 'namespace =~ "shopstream-.*"']
+    receivers:
+      - name: "null"
+      # Fill in via an AlertmanagerConfig or a secret-backed values file; no webhook URL in Git.
+      - name: slack
+
+grafana:
+  adminPassword: ""  # generated; read it from the kps-grafana secret
+  defaultDashboardsTimezone: browser
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      searchNamespace: ALL
+  ingress:
+    enabled: false
+
+kube-state-metrics:
+  metricLabelsAllowlist:
+    - pods=[app.kubernetes.io/name,app.kubernetes.io/part-of]
+    - deployments=[app.kubernetes.io/name,app.kubernetes.io/part-of]
+
+# kind / managed control planes don't expose these
+kubeEtcd: { enabled: false }
+kubeScheduler: { enabled: false }
+kubeControllerManager: { enabled: false }
+kubeProxy: { enabled: false }

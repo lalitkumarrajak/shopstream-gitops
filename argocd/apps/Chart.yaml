@@ -1,0 +1,5 @@
+apiVersion: v2
+name: shopstream-apps
+description: App-of-apps for ShopStream. Renders the Argo CD AppProject and one infra + one app Application per environment (plus optional monitoring).
+type: application
+version: 1.0.0
