@@ -79,7 +79,7 @@ jobs:
       # Images are built from the application repo so this works before anything is published to GHCR.
       - uses: actions/checkout@v4
         with:
-          repository: rajak312/shopstream
+          repository: lalitkumarrajak/shopstream
           path: .shopstream-src
       - uses: actions/setup-node@v4
         with:

@@ -5,14 +5,14 @@ type: application
 version: 1.0.0
 appVersion: "latest"
 kubeVersion: ">=1.29.0-0"
-home: https://github.com/rajak312/shopstream
+home: https://github.com/lalitkumarrajak/shopstream
 sources:
-  - https://github.com/rajak312/shopstream
-  - https://github.com/rajak312/shopstream-gitops
+  - https://github.com/lalitkumarrajak/shopstream
+  - https://github.com/lalitkumarrajak/shopstream-gitops
 keywords: [graphql, federation, nestjs, nats, microservices, saga]
 maintainers:
   - name: Lalit Rajak
-    url: https://github.com/rajak312
+    url: https://github.com/lalitkumarrajak
 dependencies:
   - name: shopstream-lib
     version: 1.0.0

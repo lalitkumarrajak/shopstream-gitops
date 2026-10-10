@@ -1,6 +1,6 @@
 # Rendered by the root Application (argocd/root-app.yaml). The kind bootstrap script
 # overrides repoURL/targetRevision to point Argo CD at a local git server.
-repoURL: https://github.com/rajak312/shopstream-gitops.git
+repoURL: https://github.com/lalitkumarrajak/shopstream-gitops.git
 targetRevision: main
 argocdNamespace: argocd
 project: shopstream

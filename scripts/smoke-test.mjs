@@ -4,7 +4,7 @@
  *
  *   GATEWAY_URL=http://localhost:4780/graphql node scripts/smoke-test.mjs
  *
- * (copied from github.com/rajak312/shopstream/scripts/smoke.mjs — dependency-free Node 20+)
+ * (copied from github.com/lalitkumarrajak/shopstream/scripts/smoke.mjs — dependency-free Node 20+)
  *
  * 1. waits for the gateway (handles free-tier cold starts)
  * 2. signs in as the demo user

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-REGISTRY="${REGISTRY:-ghcr.io/rajak312}"
+REGISTRY="${REGISTRY:-ghcr.io/lalitkumarrajak}"
 SERVICES=(gateway catalog orders payments notifications)
 IMAGES=("${SERVICES[@]}" web)
 

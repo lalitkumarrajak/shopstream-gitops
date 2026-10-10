@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds the ShopStream images from a source checkout of github.com/rajak312/shopstream,
+# Builds the ShopStream images from a source checkout of github.com/lalitkumarrajak/shopstream,
 # tagged exactly as the dev environment expects, so the kind cluster works even before
 # any image has been published to GHCR.
 #
@@ -11,8 +11,8 @@ TAG="${TAG:-$(dev_image_tag)}"
 SRC="${SHOPSTREAM_SRC:-$ROOT_DIR/../shopstream}"
 if [[ ! -f "$SRC/docker/service.Dockerfile" ]]; then
   SRC="${TMPDIR:-/tmp}/shopstream-src"
-  log "cloning https://github.com/rajak312/shopstream into $SRC"
-  rm -rf "$SRC" && git clone --depth 1 https://github.com/rajak312/shopstream "$SRC"
+  log "cloning https://github.com/lalitkumarrajak/shopstream into $SRC"
+  rm -rf "$SRC" && git clone --depth 1 https://github.com/lalitkumarrajak/shopstream "$SRC"
 fi
 log "building ShopStream images from $SRC (tag: $TAG)"
 

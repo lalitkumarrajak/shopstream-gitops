@@ -1,6 +1,6 @@
 # shopstream-gitops
 
-**GitOps delivery for [ShopStream](https://github.com/rajak312/shopstream)** — the event-driven
+**GitOps delivery for [ShopStream](https://github.com/lalitkumarrajak/shopstream)** — the event-driven
 e-commerce microservices system (NestJS · Apollo Federation · MongoDB · PostgreSQL · NATS JetStream).
 Helm charts with a shared library chart, Argo CD app-of-apps with `dev` (auto-sync, self-heal) and
 `prod` (manual, promoted by PR) environments, default-deny NetworkPolicies, restricted Pod Security,
@@ -33,10 +33,10 @@ scripts/bootstrap-kind.sh   # kind + ingress-nginx + Argo CD + ShopStream  ->  h
 
 ```mermaid
 flowchart LR
-  dev(["Developer"]) -- "git push / PR merge" --> app["rajak312/shopstream<br/>(application repo)"]
+  dev(["Developer"]) -- "git push / PR merge" --> app["lalitkumarrajak/shopstream<br/>(application repo)"]
   app -- "GitHub Actions: lint · test · e2e" --> ci{{"CI green"}}
-  ci -- "release.yml: buildx multi-arch" --> ghcr[("GHCR<br/>ghcr.io/rajak312/shopstream-*:&lt;sha&gt;")]
-  ci -- "bump dev image tag<br/>(GITOPS_TOKEN)" --> gitops["rajak312/shopstream-gitops<br/>environments/dev/values.yaml"]
+  ci -- "release.yml: buildx multi-arch" --> ghcr[("GHCR<br/>ghcr.io/lalitkumarrajak/shopstream-*:&lt;sha&gt;")]
+  ci -- "bump dev image tag<br/>(GITOPS_TOKEN)" --> gitops["lalitkumarrajak/shopstream-gitops<br/>environments/dev/values.yaml"]
   gitops -- "promote.sh → PR → review" --> prodvals["environments/prod/values.yaml"]
   subgraph cluster["Kubernetes cluster"]
     argo["Argo CD<br/>root app (app-of-apps)"]
@@ -102,7 +102,7 @@ Prerequisites: Docker (≈4 GB free RAM), `kind`, `kubectl`, `git`, Node.js ≥ 
 Helm is only needed for `scripts/validate.sh`.
 
 ```bash
-git clone https://github.com/rajak312/shopstream-gitops && cd shopstream-gitops
+git clone https://github.com/lalitkumarrajak/shopstream-gitops && cd shopstream-gitops
 scripts/bootstrap-kind.sh
 ```
 
@@ -112,7 +112,7 @@ What it does:
    port 80 published on **localhost:4780**;
 2. installs ingress-nginx;
 3. makes the ShopStream images available: reuses local images, else pulls
-   `ghcr.io/rajak312/shopstream-*:<dev tag>`, else **builds them from the application repo**
+   `ghcr.io/lalitkumarrajak/shopstream-*:<dev tag>`, else **builds them from the application repo**
    (`SHOPSTREAM_SRC`, default `../shopstream`, cloned if missing) and `kind load`s them — so it works
    before anything is published;
 4. installs Argo CD and patches it (Application health check, 30 s reconciliation);

@@ -81,11 +81,11 @@ if [[ "$GITOPS_SOURCE" == "local" ]]; then
   REVISION="$(git -C "$ROOT_DIR" rev-parse --abbrev-ref HEAD)"
   [[ "$REVISION" == "HEAD" ]] && REVISION="$(git -C "$ROOT_DIR" rev-parse HEAD)"
 else
-  REPO_URL="https://github.com/rajak312/shopstream-gitops.git"
+  REPO_URL="https://github.com/lalitkumarrajak/shopstream-gitops.git"
   REVISION="${GITOPS_REVISION:-main}"
 fi
 log "pointing Argo CD at $REPO_URL ($REVISION)"
-sed -e "s#https://github.com/rajak312/shopstream-gitops.git#$REPO_URL#g" \
+sed -e "s#https://github.com/lalitkumarrajak/shopstream-gitops.git#$REPO_URL#g" \
     -e "s#targetRevision: main#targetRevision: $REVISION#g" \
     "$ROOT_DIR/argocd/root-app.yaml" | kubectl apply -n argocd -f - >/dev/null
 

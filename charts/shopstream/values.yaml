@@ -3,7 +3,7 @@
 
 global:
   image:
-    registry: ghcr.io/rajak312
+    registry: ghcr.io/lalitkumarrajak
     # Immutable git SHA in real environments (bumped by the shopstream release workflow).
     tag: latest
     pullPolicy: IfNotPresent
